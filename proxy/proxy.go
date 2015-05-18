@@ -96,7 +96,7 @@ func (p *Proxy) searchContainer(subdomain string) (string, string, error) {
 		}
 	}
 
-	ip := container.NetworkSettings.IPAddress
+	ip := container.NetworkSettings.Gateway
 	if path := os.Getenv("DOCKER_HOST"); path != "" {
 		// for boot2docker
 		u, err := url.Parse(path)
