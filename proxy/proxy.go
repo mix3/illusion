@@ -1,18 +1,20 @@
 package proxy
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
 
 	"github.com/fsouza/go-dockerclient"
 	"github.com/mix3/illusion/config"
 )
+
+var ErrNotFound = errors.New("subdomain not found")
 
 type Proxy struct {
 	conf      config.Config
@@ -21,17 +23,7 @@ type Proxy struct {
 }
 
 func NewProxy(conf config.Config) *Proxy {
-	var client *docker.Client
-	var err error
-	if path := os.Getenv("DOCKER_CERT_PATH"); path == "" {
-		client, err = docker.NewClient(conf.DockerEndpoint)
-	} else {
-		// for boot2docker
-		ca := fmt.Sprintf("%s/ca.pem", path)
-		cert := fmt.Sprintf("%s/cert.pem", path)
-		key := fmt.Sprintf("%s/key.pem", path)
-		client, err = docker.NewTLSClient(conf.DockerEndpoint, cert, key, ca)
-	}
+	client, err := docker.NewClient(conf.DockerEndpoint)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -83,42 +75,46 @@ func (p *Proxy) searchContainer(subdomain string) (string, string, error) {
 		}
 	}
 	if container == nil {
-		return "", "", fmt.Errorf("container not found, name(%s)", subdomain)
+		return "", "", ErrNotFound
 	}
 
-	var ports []docker.PortBinding
 	if len(container.NetworkSettings.Ports) != 1 {
-		return "", "", fmt.Errorf("PortBinding is invalid, name(%s)", subdomain)
-	}
-	for _, ports = range container.NetworkSettings.Ports {
-		if len(ports) != 1 {
-			return "", "", fmt.Errorf("PortBinding is invalid, name(%s)", subdomain)
-		}
+		return "", "", ErrNotFound
 	}
 
-	ip := container.NetworkSettings.Gateway
-	if path := os.Getenv("DOCKER_HOST"); path != "" {
-		// for boot2docker
-		u, err := url.Parse(path)
-		if err != nil {
-			return "", "", fmt.Errorf("DOCKER_HOST(%s) is invalid", path)
+	var port string
+	for v, _ := range container.NetworkSettings.Ports {
+		if v.Proto() != "tcp" {
+			return "", "", ErrNotFound
 		}
-		ip, _ = split(u.Host)
+		port = v.Port()
 	}
 
-	return ip, ports[0].HostPort, nil
+	ip := container.NetworkSettings.IPAddress
+
+	return ip, port, nil
 }
 
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	subdomain := p.parseHost(r.Host)
+
 	ip, port, err := p.searchContainer(subdomain)
+
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		switch err {
+		case ErrNotFound:
+			http.NotFound(w, r)
+			return
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
+
 	u, err := url.Parse(fmt.Sprintf("http://%s:%s", ip, port))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+
 	httputil.NewSingleHostReverseProxy(u).ServeHTTP(w, r)
 }
