@@ -1,3 +1,5 @@
-domain          = "example.net"
-listen_addr     = "127.0.0.1:8080"
-docker_endpoint = "unix:///var/run/docker.sock"
+domain           = "example.net"
+listen_addr      = "127.0.0.1:8080"
+forward_port     = 5000
+ignore_subdomain = []
+docker_endpoint  = "unix:///var/run/docker.sock"

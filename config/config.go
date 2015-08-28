@@ -8,9 +8,11 @@ import (
 )
 
 type Config struct {
-	Domain         string `toml:"domain"`
-	ListenAddr     string `toml:"listen_addr"`
-	DockerEndpoint string `toml:"docker_endpoint"`
+	Domain          string   `toml:"domain"`
+	ListenAddr      string   `toml:"listen_addr"`
+	ForwardPort     int      `toml:"forward_port"`
+	IgnoreSubdomain []string `toml:"ignore_subdomain"`
+	DockerEndpoint  string   `toml:"docker_endpoint"`
 }
 
 var Conf Config
